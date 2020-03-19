@@ -14,6 +14,7 @@ import child_process, {
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
+import ora from 'ora';
 import {Config} from '@react-native-community/cli-types';
 import findXcodeProject, {ProjectInfo} from './findXcodeProject';
 import parseIOSDevicesList from './parseIOSDevicesList';
@@ -26,6 +27,7 @@ import {
   getDefaultUserTerminal,
 } from '@react-native-community/cli-tools';
 import {Device} from '../../types';
+import {getLoader} from '../../../../cli/src/commands/doctor/doctor';
 
 type FlagsT = {
   simulator: string;
@@ -173,11 +175,15 @@ async function runOnSimulator(
     bootSimulator(selectedSimulator);
   }
 
+  const Loader = getLoader();
+  const loader = new Loader();
+
   const appName = await buildProject(
     xcodeProject,
     selectedSimulator.udid,
     scheme,
     args,
+    loader,
   );
 
   const appPath = getBuildPath(
@@ -240,11 +246,15 @@ async function runOnDevice(
     );
   }
 
+  const Loader = getLoader();
+  const loader = new Loader();
+
   const appName = await buildProject(
     xcodeProject,
     selectedDevice.udid,
     scheme,
     args,
+    loader,
   );
 
   const iosDeployInstallArgs = [
@@ -279,6 +289,7 @@ function buildProject(
   udid: string | undefined,
   scheme: string,
   args: FlagsT,
+  loader: ora.Ora,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const xcodebuildArgs = [
@@ -296,6 +307,7 @@ function buildProject(
         `(using "xcodebuild ${xcodebuildArgs.join(' ')}")`,
       )}`,
     );
+    loader.start('Proceeding iOS build...');
     let xcpretty: ChildProcess | any;
     if (!args.verbose) {
       xcpretty =
@@ -319,8 +331,6 @@ function buildProject(
       } else {
         if (logger.isVerbose()) {
           logger.debug(stringData);
-        } else {
-          process.stdout.write('.');
         }
       }
     });
@@ -331,9 +341,11 @@ function buildProject(
       if (xcpretty) {
         xcpretty.stdin.end();
       } else {
+        loader.succeed('Building succeeded!');
         process.stdout.write('\n');
       }
       if (code !== 0) {
+        loader.fail('Building failed!');
         reject(
           new CLIError(
             `
@@ -348,6 +360,7 @@ function buildProject(
         );
         return;
       }
+      loader.stop();
       resolve(getProductName(buildOutput) || scheme);
     });
   });
